@@ -1,0 +1,230 @@
+blueprint:
+  name: Motion Light - Sun & Time Schedule
+  description: >-
+    Turns a light on when motion is detected and off again after no motion,
+    with a different brightness and off-timeout for each part of the day:
+    day, sunset to late night, late night to sunrise, and sunrise to
+    morning cutoff. If the light is already on when motion is detected (for
+    example it was dimmed from the wall), its brightness is left alone.
+  domain: automation
+  source_url: https://github.com/haufhun/ha-blueprints/blob/main/automation/motion_light_sun_schedule.yaml
+  input:
+    devices:
+      name: Devices
+      icon: mdi:motion-sensor
+      input:
+        motion_entity:
+          name: Motion sensor
+          selector:
+            entity:
+              domain: binary_sensor
+              device_class: motion
+        light_entity:
+          name: Light
+          selector:
+            entity:
+              domain: light
+    schedule:
+      name: Schedule
+      icon: mdi:clock-outline
+      description: >-
+        Windows, in order through the day: Day, Sunset (sunset to late night),
+        Late night (late night start to sunrise), Morning (sunrise to the
+        morning cutoff). If sunrise falls after the morning cutoff, late night
+        simply runs until sunrise.
+      input:
+        late_start:
+          name: Late night starts at
+          default: '23:00:00'
+          selector:
+            time: {}
+        morning_end:
+          name: Morning ends at
+          default: '08:00:00'
+          selector:
+            time: {}
+        sunset_offset:
+          name: Sunset offset (minutes)
+          description: Negative = before sunset, positive = after.
+          default: 0
+          selector:
+            number:
+              min: -180
+              max: 180
+              step: 5
+              unit_of_measurement: min
+              mode: box
+        sunrise_offset:
+          name: Sunrise offset (minutes)
+          description: Negative = before sunrise, positive = after.
+          default: 0
+          selector:
+            number:
+              min: -180
+              max: 180
+              step: 5
+              unit_of_measurement: min
+              mode: box
+    brightness:
+      name: Brightness
+      icon: mdi:brightness-6
+      input:
+        day_brightness:
+          name: Day brightness
+          default: 100
+          selector:
+            number:
+              min: 1
+              max: 100
+              unit_of_measurement: '%'
+              mode: slider
+        sunset_brightness:
+          name: Sunset to late night brightness
+          default: 60
+          selector:
+            number:
+              min: 1
+              max: 100
+              unit_of_measurement: '%'
+              mode: slider
+        late_brightness:
+          name: Late night brightness
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 100
+              unit_of_measurement: '%'
+              mode: slider
+        morning_brightness:
+          name: Sunrise to morning cutoff brightness
+          default: 30
+          selector:
+            number:
+              min: 1
+              max: 100
+              unit_of_measurement: '%'
+              mode: slider
+    timeouts:
+      name: No-motion timeouts
+      icon: mdi:timer-outline
+      description: >-
+        Minutes to wait after motion clears before turning the light off. The
+        window in effect when motion clears is used.
+      input:
+        day_timeout:
+          name: Day timeout
+          default: 15
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        sunset_timeout:
+          name: Sunset to late night timeout
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        late_timeout:
+          name: Late night timeout
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        morning_timeout:
+          name: Sunrise to morning cutoff timeout
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+
+mode: restart
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input motion_entity
+    from: 'off'
+    to: 'on'
+
+variables:
+  motion_entity: !input motion_entity
+  light_entity: !input light_entity
+  late_start: !input late_start
+  morning_end: !input morning_end
+  sunset_offset: !input sunset_offset
+  sunrise_offset: !input sunrise_offset
+  brightness_by_window:
+    day: !input day_brightness
+    sunset: !input sunset_brightness
+    late: !input late_brightness
+    morning: !input morning_brightness
+  timeout_by_window:
+    day: !input day_timeout
+    sunset: !input sunset_timeout
+    late: !input late_timeout
+    morning: !input morning_timeout
+
+actions:
+  # Which window are we in right now? Evaluated again after motion clears;
+  # keep the two templates identical.
+  - variables:
+      window: >-
+        {% set rise = as_datetime(state_attr('sun.sun', 'next_rising')) + timedelta(minutes=sunrise_offset | float(0)) %}
+        {% set sett = as_datetime(state_attr('sun.sun', 'next_setting')) + timedelta(minutes=sunset_offset | float(0)) %}
+        {% set t = now().strftime('%H:%M:%S') %}
+        {% if rise < sett %}
+          {% set w = 'late' if (t >= late_start[0:8] or t < '12:00:00') else 'sunset' %}
+        {% else %}
+          {% set w = 'morning' if (t < '12:00:00' and t < morning_end[0:8]) else 'day' %}
+        {% endif %}
+        {{ w }}
+
+  # Only set brightness when the light is off, so a level chosen at the wall
+  # is never overridden.
+  - if:
+      - condition: state
+        entity_id: !input light_entity
+        state: 'off'
+    then:
+      - action: light.turn_on
+        target:
+          entity_id: !input light_entity
+        data:
+          brightness_pct: "{{ brightness_by_window[window] | int }}"
+
+  - wait_template: "{{ is_state(motion_entity, 'off') }}"
+
+  - variables:
+      window: >-
+        {% set rise = as_datetime(state_attr('sun.sun', 'next_rising')) + timedelta(minutes=sunrise_offset | float(0)) %}
+        {% set sett = as_datetime(state_attr('sun.sun', 'next_setting')) + timedelta(minutes=sunset_offset | float(0)) %}
+        {% set t = now().strftime('%H:%M:%S') %}
+        {% if rise < sett %}
+          {% set w = 'late' if (t >= late_start[0:8] or t < '12:00:00') else 'sunset' %}
+        {% else %}
+          {% set w = 'morning' if (t < '12:00:00' and t < morning_end[0:8]) else 'day' %}
+        {% endif %}
+        {{ w }}
+
+  - delay:
+      minutes: "{{ timeout_by_window[window] | float }}"
+
+  - action: light.turn_off
+    target:
+      entity_id: !input light_entity
