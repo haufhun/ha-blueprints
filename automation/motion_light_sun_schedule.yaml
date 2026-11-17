@@ -217,16 +217,14 @@ triggers:
     from: 'off'
     to: 'on'
     id: motion
-  - device_id: !input switch_device
-    domain: zwave_js
-    type: event.value_notification.central_scene
-    property: scene
-    property_key: '001'
-    endpoint: 0
-    command_class: 91
-    subtype: Endpoint 0 Scene 001
-    trigger: device
-    value: '3'
+  - trigger: event
+    event_type: zwave_js_value_notification
+    event_data:
+      device_id: !input switch_device
+      command_class: 91
+      property: scene
+      property_key: '001'
+      value: KeyPressed2x
     id: full
 
 conditions: []

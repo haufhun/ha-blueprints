@@ -42,7 +42,8 @@ about 21:00 would put it after 22:00).
   the day window applies.
 - The light must report its state and brightness to Home Assistant (a smart
   dimmer or smart bulb). A switch that only cuts power to the bulb is not
-  supported. The switch must be a Z-Wave central-scene dimmer.
+  supported. The switch must be a Z-Wave central-scene dimmer that emits
+  `zwave_js_value_notification` events.
 - Requires `sun.sun` and Home Assistant 2024.10 or newer.
 
 ## Switch Gestures - Enable/Disable Automation With Light Feedback
