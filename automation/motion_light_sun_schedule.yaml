@@ -26,14 +26,14 @@ blueprint:
           selector:
             entity:
               domain: light
-        up_paddle_event:
-          name: Switch upper paddle (event entity)
+        switch_device:
+          name: Z-Wave dimmer switch
           description: >-
-            Z-Wave central-scene event entity for the upper paddle. A double
-            tap goes to full brightness with the long timeout.
+            Z-Wave dimmer switch. A double tap on its upper paddle goes to full
+            brightness with the long timeout.
           selector:
-            entity:
-              domain: event
+            device:
+              integration: zwave_js
     schedule:
       name: Schedule
       icon: mdi:clock-outline
@@ -217,12 +217,16 @@ triggers:
     from: 'off'
     to: 'on'
     id: motion
-  - trigger: event.received
-    target:
-      entity_id: !input up_paddle_event
-    options:
-      event_type:
-        - KeyPressed2x
+  - device_id: !input switch_device
+    domain: zwave_js
+    type: event.value_notification.central_scene
+    property: scene
+    property_key: '001'
+    endpoint: 0
+    command_class: 91
+    subtype: Endpoint 0 Scene 001
+    trigger: device
+    value: '2'
     id: full
 
 conditions: []

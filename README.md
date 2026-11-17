@@ -42,7 +42,7 @@ about 21:00 would put it after 22:00).
   the day window applies.
 - The light must report its state and brightness to Home Assistant (a smart
   dimmer or smart bulb). A switch that only cuts power to the bulb is not
-  supported. The switch must expose Z-Wave central-scene event entities.
+  supported. The switch must be a Z-Wave central-scene dimmer.
 - Requires `sun.sun` and Home Assistant 2024.10 or newer.
 
 ## Switch Gestures - Enable/Disable Automation With Light Feedback
@@ -50,7 +50,7 @@ about 21:00 would put it after 22:00).
 Import URL:
 `https://github.com/haufhun/ha-blueprints/blob/main/automation/switch_toggle_automation.yaml`
 
-Companion to the motion blueprint, one instance per switch.
+Companion to the motion blueprint, one instance per Z-Wave dimmer switch.
 
 - Triple-tap the **upper** paddle: enables the target automation; the light
   blinks 3 times quickly.
