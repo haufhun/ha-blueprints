@@ -38,7 +38,7 @@ triggers:
     command_class: 91
     subtype: Endpoint 0 Scene 001
     trigger: device
-    value: '3'
+    value: '4'
     id: enable
   - device_id: !input switch_device
     domain: zwave_js
@@ -49,7 +49,7 @@ triggers:
     command_class: 91
     subtype: Endpoint 0 Scene 002
     trigger: device
-    value: '3'
+    value: '4'
     id: disable
 
 conditions: []

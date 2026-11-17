@@ -226,7 +226,7 @@ triggers:
     command_class: 91
     subtype: Endpoint 0 Scene 001
     trigger: device
-    value: '2'
+    value: '3'
     id: full
 
 conditions: []
