@@ -34,18 +34,22 @@ mode: single
 max_exceeded: silent
 
 triggers:
-  - trigger: state
-    entity_id: !input up_paddle_event
+  - trigger: event.received
+    target:
+      entity_id: !input up_paddle_event
+    options:
+      event_type:
+        - KeyPressed3x
     id: enable
-  - trigger: state
-    entity_id: !input down_paddle_event
+  - trigger: event.received
+    target:
+      entity_id: !input down_paddle_event
+    options:
+      event_type:
+        - KeyPressed3x
     id: disable
 
-conditions:
-  - condition: template
-    value_template: >-
-      {{ trigger.to_state is not none and
-         trigger.to_state.attributes.event_type == 'KeyPressed3x' }}
+conditions: []
 
 variables:
   snapshot_id: "{{ 'switch_gesture_' ~ this.entity_id.split('.')[1] }}"

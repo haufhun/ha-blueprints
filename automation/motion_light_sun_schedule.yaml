@@ -217,16 +217,15 @@ triggers:
     from: 'off'
     to: 'on'
     id: motion
-  - trigger: state
-    entity_id: !input up_paddle_event
+  - trigger: event.received
+    target:
+      entity_id: !input up_paddle_event
+    options:
+      event_type:
+        - KeyPressed2x
     id: full
 
-conditions:
-  - condition: template
-    value_template: >-
-      {{ trigger.id == 'motion' or
-         (trigger.to_state is not none and
-          trigger.to_state.attributes.event_type == 'KeyPressed2x') }}
+conditions: []
 
 variables:
   motion_entity: !input motion_entity
