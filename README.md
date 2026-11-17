@@ -14,25 +14,49 @@ no-motion timeout are configurable per window:
 
 | Window | Runs | Default brightness | Default timeout |
 | --- | --- | --- | --- |
-| Day | morning cutoff to sunset | 100% | 15 min |
-| Sunset | sunset to late-night start | 60% | 5 min |
-| Late night | late-night start (23:00) to sunrise | 10% | 2 min |
 | Morning | sunrise to morning cutoff (08:00) | 30% | 5 min |
+| Day | morning cutoff to sunset | 100% | 15 min |
+| Sunset | sunset to wind-down start | 60% | 5 min |
+| Wind-down | 3 h after sunset to late-night start | 30% | 3 min |
+| Late night | late-night start (22:00) to sunrise | 10% | 2 min |
 
-Sunset and sunrise can each be shifted by an offset in minutes.
+Sunset and sunrise can each be shifted by an offset in minutes. Wind-down only
+exists when it starts before late night, so it appears in winter (sunset about
+17:00 gives wind-down at about 20:00) and does not occur in summer (sunset
+about 21:00 would put it after 22:00).
 
 ### Behavior
 
 - **Manual override:** brightness is only set when the light is off. If the
   light is already on when motion is detected (for example dimmed from the
   wall), it is left at its current level.
-- **Timeout:** after motion clears, the light turns off once the timeout for
-  the window in effect at that moment has elapsed. New motion restarts the
-  automation and cancels a pending off.
+- **Full brightness:** double-tapping the upper paddle sets 100%. A light at
+  full brightness (double-tap, or set at the wall) uses the full-brightness
+  timeout (default 15 min) when motion clears, so a shower is not cut short.
+  The rule looks at the light's brightness when motion clears, so it holds
+  across the automation restarting on new motion.
+- **Timeout:** after motion clears, the light turns off once the timeout has
+  elapsed. New motion restarts the automation and cancels a pending off.
 - **Sunrise after the morning cutoff** (winter, or a late cutoff offset): the
   morning window is empty and the late-night window runs until sunrise, then
   the day window applies.
-- The light must report its state to Home Assistant (a smart dimmer or smart
-  bulb). A switch that only cuts power to the bulb is not supported.
-- Requires `sun.sun`, Home Assistant 2024.10 or newer (collapsible input
-  sections, `triggers:`/`actions:` syntax).
+- The light must report its state and brightness to Home Assistant (a smart
+  dimmer or smart bulb). A switch that only cuts power to the bulb is not
+  supported. The switch must expose Z-Wave central-scene event entities.
+- Requires `sun.sun` and Home Assistant 2024.10 or newer.
+
+## Switch Gestures - Enable/Disable Automation With Light Feedback
+
+Import URL:
+`https://github.com/haufhun/ha-blueprints/blob/main/automation/switch_toggle_automation.yaml`
+
+Companion to the motion blueprint, one instance per switch.
+
+- Triple-tap the **upper** paddle: enables the target automation; the light
+  blinks 3 times quickly.
+- Triple-tap the **lower** paddle: disables the target automation; the light
+  blinks twice, slowly.
+- The light is restored to its prior state after the blinks.
+
+This is a separate automation because a disabled automation cannot hear the
+tap that turns it back on. The enabled/disabled state survives restarts.

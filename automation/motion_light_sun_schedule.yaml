@@ -3,9 +3,11 @@ blueprint:
   description: >-
     Turns a light on when motion is detected and off again after no motion,
     with a different brightness and off-timeout for each part of the day:
-    day, sunset to late night, late night to sunrise, and sunrise to
-    morning cutoff. If the light is already on when motion is detected (for
-    example it was dimmed from the wall), its brightness is left alone.
+    day, sunset, wind-down (a few hours after sunset), late night, and
+    morning. If the light is already on when motion is detected (for example
+    it was dimmed from the wall), its brightness is left alone. Double-tapping
+    the upper paddle goes to full brightness, and a light at full brightness
+    uses a long timeout (for showers).
   domain: automation
   source_url: https://github.com/haufhun/ha-blueprints/blob/main/automation/motion_light_sun_schedule.yaml
   input:
@@ -24,18 +26,28 @@ blueprint:
           selector:
             entity:
               domain: light
+        up_paddle_event:
+          name: Switch upper paddle (event entity)
+          description: >-
+            Z-Wave central-scene event entity for the upper paddle. A double
+            tap goes to full brightness with the long timeout.
+          selector:
+            entity:
+              domain: event
     schedule:
       name: Schedule
       icon: mdi:clock-outline
       description: >-
-        Windows, in order through the day: Day, Sunset (sunset to late night),
-        Late night (late night start to sunrise), Morning (sunrise to the
-        morning cutoff). If sunrise falls after the morning cutoff, late night
-        simply runs until sunrise.
+        Windows, in order through the day: Morning (sunrise to the morning
+        cutoff), Day (cutoff to sunset), Sunset (sunset to wind-down),
+        Wind-down (a number of hours after sunset until late night), Late
+        night (late night start to sunrise). Wind-down only exists when it
+        starts before late night, so in summer it simply does not occur. If
+        sunrise falls after the morning cutoff, late night runs until sunrise.
       input:
         late_start:
           name: Late night starts at
-          default: '23:00:00'
+          default: '22:00:00'
           selector:
             time: {}
         morning_end:
@@ -43,6 +55,16 @@ blueprint:
           default: '08:00:00'
           selector:
             time: {}
+        winddown_hours:
+          name: Wind-down starts this many hours after sunset
+          default: 3
+          selector:
+            number:
+              min: 0
+              max: 8
+              step: 0.5
+              unit_of_measurement: h
+              mode: box
         sunset_offset:
           name: Sunset offset (minutes)
           description: Negative = before sunset, positive = after.
@@ -79,8 +101,17 @@ blueprint:
               unit_of_measurement: '%'
               mode: slider
         sunset_brightness:
-          name: Sunset to late night brightness
+          name: Sunset brightness
           default: 60
+          selector:
+            number:
+              min: 1
+              max: 100
+              unit_of_measurement: '%'
+              mode: slider
+        winddown_brightness:
+          name: Wind-down brightness
+          default: 30
           selector:
             number:
               min: 1
@@ -97,7 +128,7 @@ blueprint:
               unit_of_measurement: '%'
               mode: slider
         morning_brightness:
-          name: Sunrise to morning cutoff brightness
+          name: Morning brightness
           default: 30
           selector:
             number:
@@ -110,7 +141,8 @@ blueprint:
       icon: mdi:timer-outline
       description: >-
         Minutes to wait after motion clears before turning the light off. The
-        window in effect when motion clears is used.
+        window in effect when motion clears is used, unless the light is at
+        full brightness (then the full-brightness timeout is used).
       input:
         day_timeout:
           name: Day timeout
@@ -123,8 +155,18 @@ blueprint:
               unit_of_measurement: min
               mode: box
         sunset_timeout:
-          name: Sunset to late night timeout
+          name: Sunset timeout
           default: 5
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        winddown_timeout:
+          name: Wind-down timeout
+          default: 3
           selector:
             number:
               min: 0
@@ -143,8 +185,21 @@ blueprint:
               unit_of_measurement: min
               mode: box
         morning_timeout:
-          name: Sunrise to morning cutoff timeout
+          name: Morning timeout
           default: 5
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        full_timeout:
+          name: Full brightness timeout
+          description: >-
+            Used when the light is at full brightness when motion clears
+            (double-tap up, or set to full at the wall). Good for showers.
+          default: 15
           selector:
             number:
               min: 0
@@ -161,22 +216,37 @@ triggers:
     entity_id: !input motion_entity
     from: 'off'
     to: 'on'
+    id: motion
+  - trigger: state
+    entity_id: !input up_paddle_event
+    id: full
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ trigger.id == 'motion' or
+         (trigger.to_state is not none and
+          trigger.to_state.attributes.event_type == 'KeyPressed2x') }}
 
 variables:
   motion_entity: !input motion_entity
   light_entity: !input light_entity
   late_start: !input late_start
   morning_end: !input morning_end
+  winddown_hours: !input winddown_hours
   sunset_offset: !input sunset_offset
   sunrise_offset: !input sunrise_offset
+  full_timeout: !input full_timeout
   brightness_by_window:
     day: !input day_brightness
     sunset: !input sunset_brightness
+    winddown: !input winddown_brightness
     late: !input late_brightness
     morning: !input morning_brightness
   timeout_by_window:
     day: !input day_timeout
     sunset: !input sunset_timeout
+    winddown: !input winddown_timeout
     late: !input late_timeout
     morning: !input morning_timeout
 
@@ -187,26 +257,40 @@ actions:
       window: >-
         {% set rise = as_datetime(state_attr('sun.sun', 'next_rising')) + timedelta(minutes=sunrise_offset | float(0)) %}
         {% set sett = as_datetime(state_attr('sun.sun', 'next_setting')) + timedelta(minutes=sunset_offset | float(0)) %}
+        {% set wd = sett - timedelta(days=1) + timedelta(hours=winddown_hours | float(0)) %}
         {% set t = now().strftime('%H:%M:%S') %}
         {% if rise < sett %}
-          {% set w = 'late' if (t >= late_start[0:8] or t < '12:00:00') else 'sunset' %}
+          {% if t >= late_start[0:8] or t < '12:00:00' %}{% set w = 'late' %}
+          {% elif now() >= wd %}{% set w = 'winddown' %}
+          {% else %}{% set w = 'sunset' %}{% endif %}
         {% else %}
           {% set w = 'morning' if (t < '12:00:00' and t < morning_end[0:8]) else 'day' %}
         {% endif %}
         {{ w }}
 
-  # Only set brightness when the light is off, so a level chosen at the wall
-  # is never overridden.
-  - if:
-      - condition: state
-        entity_id: !input light_entity
-        state: 'off'
-    then:
-      - action: light.turn_on
-        target:
-          entity_id: !input light_entity
-        data:
-          brightness_pct: "{{ brightness_by_window[window] | int }}"
+  # Double-tap up: go to full brightness. Motion: set the window brightness
+  # only when the light is off, so a level chosen at the wall is never
+  # overridden.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'full' }}"
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: 100
+      - conditions:
+          - condition: state
+            entity_id: !input light_entity
+            state: 'off'
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: !input light_entity
+            data:
+              brightness_pct: "{{ brightness_by_window[window] | int }}"
 
   - wait_template: "{{ is_state(motion_entity, 'off') }}"
 
@@ -214,16 +298,24 @@ actions:
       window: >-
         {% set rise = as_datetime(state_attr('sun.sun', 'next_rising')) + timedelta(minutes=sunrise_offset | float(0)) %}
         {% set sett = as_datetime(state_attr('sun.sun', 'next_setting')) + timedelta(minutes=sunset_offset | float(0)) %}
+        {% set wd = sett - timedelta(days=1) + timedelta(hours=winddown_hours | float(0)) %}
         {% set t = now().strftime('%H:%M:%S') %}
         {% if rise < sett %}
-          {% set w = 'late' if (t >= late_start[0:8] or t < '12:00:00') else 'sunset' %}
+          {% if t >= late_start[0:8] or t < '12:00:00' %}{% set w = 'late' %}
+          {% elif now() >= wd %}{% set w = 'winddown' %}
+          {% else %}{% set w = 'sunset' %}{% endif %}
         {% else %}
           {% set w = 'morning' if (t < '12:00:00' and t < morning_end[0:8]) else 'day' %}
         {% endif %}
         {{ w }}
+      # A light at full brightness (double-tap, or set at the wall) gets the
+      # long timeout so a shower is not cut short.
+      timeout_min: >-
+        {% set b = state_attr(light_entity, 'brightness') | int(0) %}
+        {{ full_timeout if (trigger.id == 'full' or b >= 250) else timeout_by_window[window] }}
 
   - delay:
-      minutes: "{{ timeout_by_window[window] | float }}"
+      minutes: "{{ timeout_min | float }}"
 
   - action: light.turn_off
     target:

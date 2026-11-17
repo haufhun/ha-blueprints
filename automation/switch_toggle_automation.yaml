@@ -1,0 +1,113 @@
+blueprint:
+  name: Switch Gestures - Enable/Disable Automation With Light Feedback
+  description: >-
+    Triple-tap the upper paddle to turn an automation on (3 quick blinks) and
+    triple-tap the lower paddle to turn it off (2 long blinks). The light is
+    restored to its state after the blinks. Intended for the motion light
+    automation on the same switch. This must be a separate automation: a
+    disabled automation cannot hear the tap that turns it back on.
+  domain: automation
+  source_url: https://github.com/haufhun/ha-blueprints/blob/main/automation/switch_toggle_automation.yaml
+  input:
+    up_paddle_event:
+      name: Switch upper paddle (event entity)
+      selector:
+        entity:
+          domain: event
+    down_paddle_event:
+      name: Switch lower paddle (event entity)
+      selector:
+        entity:
+          domain: event
+    light_entity:
+      name: Light to blink for feedback
+      selector:
+        entity:
+          domain: light
+    target_automation:
+      name: Automation to enable/disable
+      selector:
+        entity:
+          domain: automation
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input up_paddle_event
+    id: enable
+  - trigger: state
+    entity_id: !input down_paddle_event
+    id: disable
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ trigger.to_state is not none and
+         trigger.to_state.attributes.event_type == 'KeyPressed3x' }}
+
+variables:
+  snapshot_id: "{{ 'switch_gesture_' ~ this.entity_id.split('.')[1] }}"
+
+actions:
+  # Let the switch settle after the taps, then remember its state.
+  - delay:
+      milliseconds: 1000
+  - action: scene.create
+    data:
+      scene_id: "{{ snapshot_id }}"
+      snapshot_entities:
+        - !input light_entity
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'enable' }}"
+        sequence:
+          - action: automation.turn_on
+            target:
+              entity_id: !input target_automation
+          # Enabled: 3 quick blinks.
+          - repeat:
+              count: 3
+              sequence:
+                - action: light.turn_on
+                  target:
+                    entity_id: !input light_entity
+                  data:
+                    brightness_pct: 100
+                - delay:
+                    milliseconds: 500
+                - action: light.turn_off
+                  target:
+                    entity_id: !input light_entity
+                - delay:
+                    milliseconds: 500
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'disable' }}"
+        sequence:
+          - action: automation.turn_off
+            target:
+              entity_id: !input target_automation
+          # Disabled: 2 long blinks.
+          - repeat:
+              count: 2
+              sequence:
+                - action: light.turn_on
+                  target:
+                    entity_id: !input light_entity
+                  data:
+                    brightness_pct: 100
+                - delay:
+                    milliseconds: 1500
+                - action: light.turn_off
+                  target:
+                    entity_id: !input light_entity
+                - delay:
+                    milliseconds: 1000
+
+  - action: scene.turn_on
+    target:
+      entity_id: "{{ 'scene.' ~ snapshot_id }}"
